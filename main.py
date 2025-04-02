@@ -92,13 +92,23 @@ def update_grub(uuid, offset):
     new_lines = lines[:]
     for i, line in enumerate(new_lines):
         if line.startswith("GRUB_CMDLINE_LINUX_DEFAULT"):
+            # Remove existing resume and resume_offset entries
             line = re.sub(r'resume=UUID=\S+', '', line)
             line = re.sub(r'resume_offset=\S+', '', line)
-            new = f'resume=UUID={uuid} resume_offset={offset}'
-            if '"' in line:
-                new_lines[i] = re.sub(r'"$', f' {new}"', line)
+            line = re.sub(r'\s+', ' ', line)  # Clean up extra spaces
+
+            # Safely inject new resume info inside quotes
+            match = re.match(r'^(GRUB_CMDLINE_LINUX_DEFAULT=)(["\'])(.*?)(["\'])$', line.strip())
+            if match:
+                prefix, quote, content, _ = match.groups()
+                content = content.strip()
+                if not content.endswith(' '):
+                    content += ' '
+                content += f'resume=UUID={uuid} resume_offset={offset}'
+                new_lines[i] = f'{prefix}{quote}{content}{quote}\n'
             else:
-                new_lines[i] = line.strip() + f' {new}\n'
+                # If the line format is unexpected, append the resume parameters at the end
+                new_lines[i] = line.strip() + f' resume=UUID={uuid} resume_offset={offset}\n'
             break
 
     if confirm_file_change(GRUB_CONF, new_lines):

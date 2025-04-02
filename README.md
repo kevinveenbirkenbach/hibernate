@@ -34,7 +34,7 @@ pkgmgr install setup-hibernate
 Run the script as root:
 
 ```bash
-sudo ./hibernate_setup.py [OPTIONS]
+sudo ./main.py [OPTIONS]
 ```
 
 ### Options
@@ -51,19 +51,19 @@ sudo ./hibernate_setup.py [OPTIONS]
 Create a 40GB swapfile and configure hibernation interactively:
 
 ```bash
-sudo ./hibernate_setup.py --create-swapfile --swap-size 40
+sudo ./main.py --create-swapfile --swap-size 40
 ```
 
 Preview what would happen without actually doing anything:
 
 ```bash
-sudo ./hibernate_setup.py --create-swapfile --swap-size 40 --preview
+sudo ./main.py --create-swapfile --swap-size 40 --preview
 ```
 
 Non-interactive, suitable for automation:
 
 ```bash
-sudo ./hibernate_setup.py --create-swapfile --swap-size 40 --non-interactive
+sudo ./main.py --create-swapfile --swap-size 40 --non-interactive
 ```
 
 ---
