@@ -70,10 +70,14 @@ def get_swap_uuid():
 def get_resume_offset():
     print("[+] Calculating resume_offset...")
     out = run(f"filefrag -v {SWAPFILE}", capture=True)
-    match = re.search(r"^\s*0:\s+(\d+)", out, re.MULTILINE)
-    if match:
-        return match.group(1)
-    raise RuntimeError("Couldn't find resume offset.")
+    for line in out.splitlines():
+        match = re.search(r"^\s*\d+:\s+\d+\.\.\s*\d+:\s+(\d+)", line)
+        if match:
+            offset = match.group(1)
+            if offset != "0":
+                print(f"[✓] Found resume_offset: {offset}")
+                return offset
+    raise RuntimeError("Couldn't find valid resume offset.")
 
 def update_grub(uuid, offset):
     print("[+] Updating GRUB_CMDLINE_LINUX_DEFAULT...")
