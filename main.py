@@ -4,6 +4,7 @@ import subprocess
 import os
 import re
 import argparse
+import difflib
 
 SWAPFILE = "/swapfile"
 FSTAB = "/etc/fstab"
@@ -25,11 +26,18 @@ def confirm_file_change(path, new_lines):
     if preview or non_interactive:
         print(f"[preview] Would write changes to {path}")
         return True
-    print(f"\n--- Preview of changes to {path} ---")
-    for line in new_lines:
-        print(line.rstrip())
-    answer = input(f"[?] Apply changes to {path}? (y/N): ")
-    return answer.lower() == "y"
+    with open(path, "r") as f:
+        old_lines = f.readlines()
+    diff = list(difflib.unified_diff(old_lines, new_lines, fromfile=path, tofile=path))
+    if diff:
+        print("\n--- Diff ---")
+        for line in diff:
+            print(line.rstrip())
+        answer = input(f"[?] Apply these changes to {path}? (y/N): ")
+        return answer.lower() == "y"
+    else:
+        print(f"[-] No changes needed for {path}.")
+        return False
 
 def create_swapfile(size_gb):
     print(f"[+] Creating {size_gb}G swapfile...")
@@ -44,13 +52,14 @@ def update_fstab():
         print(f"[preview] Would append to {FSTAB}: {SWAPFILE} none swap defaults 0 0")
         return
     with open(FSTAB, "r") as f:
-        if SWAPFILE in f.read():
+        old_lines = f.readlines()
+        if any(SWAPFILE in line for line in old_lines):
             print("[-] Swapfile already in fstab.")
             return
-    new_line = f"{SWAPFILE} none swap defaults 0 0\n"
-    if confirm_file_change(FSTAB, [new_line]):
-        with open(FSTAB, "a") as f:
-            f.write(new_line)
+    new_lines = old_lines + [f"{SWAPFILE} none swap defaults 0 0\n"]
+    if confirm_file_change(FSTAB, new_lines):
+        with open(FSTAB, "w") as f:
+            f.writelines(new_lines)
     else:
         print("[!] Skipped writing to fstab.")
 
