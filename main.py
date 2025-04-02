@@ -92,23 +92,28 @@ def update_grub(uuid, offset):
     new_lines = lines[:]
     for i, line in enumerate(new_lines):
         if line.startswith("GRUB_CMDLINE_LINUX_DEFAULT"):
-            # Remove existing resume and resume_offset entries
-            line = re.sub(r'resume=UUID=\S+', '', line)
-            line = re.sub(r'resume_offset=\S+', '', line)
-            line = re.sub(r'\s+', ' ', line)  # Clean up extra spaces
+            # Extract current quoted content
+            match = re.match(r'^(GRUB_CMDLINE_LINUX_DEFAULT=)(["\'])(.*)(\2)$', line.strip())
+            if not match:
+                print("[!] Unexpected format in GRUB_CMDLINE_LINUX_DEFAULT, skipping safe modification.")
+                continue
 
-            # Safely inject new resume info inside quotes
-            match = re.match(r'^(GRUB_CMDLINE_LINUX_DEFAULT=)(["\'])(.*?)(["\'])$', line.strip())
-            if match:
-                prefix, quote, content, _ = match.groups()
-                content = content.strip()
-                if not content.endswith(' '):
-                    content += ' '
-                content += f'resume=UUID={uuid} resume_offset={offset}'
-                new_lines[i] = f'{prefix}{quote}{content}{quote}\n'
+            prefix, quote, content, _ = match.groups()
+
+            # Remove existing resume/resume_offset if present
+            content = re.sub(r'\s*resume=UUID=\S+', '', content)
+            content = re.sub(r'\s*resume_offset=\S+', '', content)
+            content = content.strip()
+
+            # Append new values
+            resume_args = f"resume=UUID={uuid} resume_offset={offset}"
+            if content:
+                content += f" {resume_args}"
             else:
-                # If the line format is unexpected, append the resume parameters at the end
-                new_lines[i] = line.strip() + f' resume=UUID={uuid} resume_offset={offset}\n'
+                content = resume_args
+
+            # Write the modified line
+            new_lines[i] = f"{prefix}{quote}{content}{quote}\n"
             break
 
     if confirm_file_change(GRUB_CONF, new_lines):
@@ -130,8 +135,28 @@ def update_mkinitcpio():
 
     new_lines = lines[:]
     for i, line in enumerate(new_lines):
-        if line.startswith("HOOKS=") and "resume" not in line:
-            new_lines[i] = line.strip().rstrip(")") + " resume)\n"
+        if line.startswith("HOOKS="):
+            # Extract hook list
+            match = re.search(r'\((.*?)\)', line)
+            if not match:
+                continue
+
+            hooks = match.group(1).split()
+            if "resume" in hooks:
+                print("[-] 'resume' hook already present.")
+                return
+
+            # Insert resume after encrypt (or just before filesystems as fallback)
+            if "encrypt" in hooks:
+                index = hooks.index("encrypt") + 1
+            elif "filesystems" in hooks:
+                index = hooks.index("filesystems")
+            else:
+                index = len(hooks)
+
+            hooks.insert(index, "resume")
+            new_line = f'HOOKS=({" ".join(hooks)})\n'
+            new_lines[i] = new_line
             break
 
     if confirm_file_change(MKINITCPIO, new_lines):
