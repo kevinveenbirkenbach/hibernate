@@ -10,10 +10,26 @@ FSTAB = "/etc/fstab"
 GRUB_CONF = "/etc/default/grub"
 MKINITCPIO = "/etc/mkinitcpio.conf"
 
+preview = False
+non_interactive = False
+
 def run(cmd, capture=False):
+    if preview:
+        print(f"[preview] Would run: {cmd}")
+        return "" if capture else None
+    subprocess.run(cmd, shell=True, check=True)
     if capture:
         return subprocess.check_output(cmd, shell=True, text=True).strip()
-    subprocess.run(cmd, shell=True, check=True)
+
+def confirm_file_change(path, new_lines):
+    if preview or non_interactive:
+        print(f"[preview] Would write changes to {path}")
+        return True
+    print(f"\n--- Preview of changes to {path} ---")
+    for line in new_lines:
+        print(line.rstrip())
+    answer = input(f"[?] Apply changes to {path}? (y/N): ")
+    return answer.lower() == "y"
 
 def create_swapfile(size_gb):
     print(f"[+] Creating {size_gb}G swapfile...")
@@ -24,17 +40,23 @@ def create_swapfile(size_gb):
 
 def update_fstab():
     print("[+] Ensuring swapfile is in /etc/fstab...")
+    if preview:
+        print(f"[preview] Would append to {FSTAB}: {SWAPFILE} none swap defaults 0 0")
+        return
     with open(FSTAB, "r") as f:
         if SWAPFILE in f.read():
             print("[-] Swapfile already in fstab.")
             return
-    with open(FSTAB, "a") as f:
-        f.write(f"{SWAPFILE} none swap defaults 0 0\n")
+    new_line = f"{SWAPFILE} none swap defaults 0 0\n"
+    if confirm_file_change(FSTAB, [new_line]):
+        with open(FSTAB, "a") as f:
+            f.write(new_line)
+    else:
+        print("[!] Skipped writing to fstab.")
 
 def get_swap_uuid():
     print("[+] Getting swap UUID...")
-    uuid = run(f"findmnt -no UUID -T {SWAPFILE}", capture=True)
-    return uuid
+    return run(f"findmnt -no UUID -T {SWAPFILE}", capture=True)
 
 def get_resume_offset():
     print("[+] Calculating resume_offset...")
@@ -46,37 +68,59 @@ def get_resume_offset():
 
 def update_grub(uuid, offset):
     print("[+] Updating GRUB_CMDLINE_LINUX_DEFAULT...")
+    if preview:
+        print(f"[preview] Would modify {GRUB_CONF} to include resume=UUID={uuid} resume_offset={offset}")
+        run("update-grub")
+        return
+
     with open(GRUB_CONF, "r") as f:
         lines = f.readlines()
-    for i, line in enumerate(lines):
+
+    new_lines = lines[:]
+    for i, line in enumerate(new_lines):
         if line.startswith("GRUB_CMDLINE_LINUX_DEFAULT"):
             line = re.sub(r'resume=UUID=\S+', '', line)
             line = re.sub(r'resume_offset=\S+', '', line)
             new = f'resume=UUID={uuid} resume_offset={offset}'
             if '"' in line:
-                lines[i] = re.sub(r'"$', f' {new}"', line)
+                new_lines[i] = re.sub(r'"$', f' {new}"', line)
             else:
-                lines[i] = line.strip() + f' {new}\n'
+                new_lines[i] = line.strip() + f' {new}\n'
             break
-    with open(GRUB_CONF, "w") as f:
-        f.writelines(lines)
-    run("update-grub")
+
+    if confirm_file_change(GRUB_CONF, new_lines):
+        with open(GRUB_CONF, "w") as f:
+            f.writelines(new_lines)
+        run("update-grub")
+    else:
+        print("[!] Skipped writing to grub config.")
 
 def update_mkinitcpio():
     print("[+] Ensuring resume hook in mkinitcpio.conf...")
+    if preview:
+        print(f"[preview] Would ensure 'resume' is included in {MKINITCPIO}")
+        run("mkinitcpio -P")
+        return
+
     with open(MKINITCPIO, "r") as f:
         lines = f.readlines()
-    for i, line in enumerate(lines):
-        if line.startswith("HOOKS="):
-            if "resume" not in line:
-                line = line.strip().rstrip(")") + " resume)"
-                lines[i] = line + "\n"
+
+    new_lines = lines[:]
+    for i, line in enumerate(new_lines):
+        if line.startswith("HOOKS=") and "resume" not in line:
+            new_lines[i] = line.strip().rstrip(")") + " resume)\n"
             break
-    with open(MKINITCPIO, "w") as f:
-        f.writelines(lines)
-    run("mkinitcpio -P")
+
+    if confirm_file_change(MKINITCPIO, new_lines):
+        with open(MKINITCPIO, "w") as f:
+            f.writelines(new_lines)
+        run("mkinitcpio -P")
+    else:
+        print("[!] Skipped writing to mkinitcpio.")
 
 def main():
+    global preview, non_interactive
+
     if os.geteuid() != 0:
         print("This script must be run as root.")
         return
@@ -84,7 +128,12 @@ def main():
     parser = argparse.ArgumentParser(description="Configure hibernation with optional swapfile setup.")
     parser.add_argument("--create-swapfile", action="store_true", help="Create and configure a swapfile")
     parser.add_argument("--swap-size", type=int, default=32, help="Swapfile size in GB (default: 32)")
+    parser.add_argument("-p", "--preview", action="store_true", help="Show what would be done without making changes")
+    parser.add_argument("--non-interactive", action="store_true", help="Apply all changes without prompting")
     args = parser.parse_args()
+
+    preview = args.preview
+    non_interactive = args.non_interactive
 
     if args.create_swapfile:
         create_swapfile(args.swap_size)
@@ -95,9 +144,11 @@ def main():
     update_grub(uuid, offset)
     update_mkinitcpio()
 
-    print("\n✅ Hibernate setup complete. Please reboot your system:")
-    print("    sudo reboot")
+    if preview:
+        print("\n✅ Hibernate setup preview complete.")
+    else:
+        print("\n✅ Hibernate setup complete. Please reboot your system:")
+        print("    sudo reboot")
 
 if __name__ == "__main__":
     main()
-

@@ -7,10 +7,12 @@ This script automates resume configuration for GRUB and initramfs, and optionall
 
 ## 🛠 Features
 
-- Create and activate a swap file (optional)
+- Optionally create and activate a swap file
 - Automatically detect UUID and resume offset
-- Inject `resume` and `resume_offset` into GRUB
+- Inject `resume` and `resume_offset` into GRUB config
 - Regenerate initramfs via `mkinitcpio`
+- Interactive confirmation before file changes
+- Preview mode for dry-run without changes
 - Supports Arch-based systems (Manjaro, Arch, etc.)
 - Root permission required
 
@@ -37,15 +39,31 @@ sudo ./hibernate_setup.py [OPTIONS]
 
 ### Options
 
-| Option                 | Description                                     |
-|------------------------|-------------------------------------------------|
-| `--create-swapfile`    | Creates a swap file at `/swapfile`             |
-| `--swap-size <int>`    | Size in GB (default: `32`)                      |
+| Option                  | Description                                                                 |
+|-------------------------|-----------------------------------------------------------------------------|
+| `--create-swapfile`     | Create and configure a swap file at `/swapfile`                             |
+| `--swap-size <int>`     | Set the swap file size in GB (default: `32`)                                |
+| `-p`, `--preview`       | Show what would be done without executing any changes (dry-run mode)        |
+| `--non-interactive`     | Apply all changes automatically without prompting for confirmation          |
 
-### Example
+### Examples
+
+Create a 40GB swapfile and configure hibernation interactively:
 
 ```bash
 sudo ./hibernate_setup.py --create-swapfile --swap-size 40
+```
+
+Preview what would happen without actually doing anything:
+
+```bash
+sudo ./hibernate_setup.py --create-swapfile --swap-size 40 --preview
+```
+
+Non-interactive, suitable for automation:
+
+```bash
+sudo ./hibernate_setup.py --create-swapfile --swap-size 40 --non-interactive
 ```
 
 ---
